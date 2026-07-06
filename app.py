@@ -40,7 +40,7 @@ st.markdown("""
         font-weight: 600;
     }
     </style>
-""", unsafe_with_html=True)
+""", unsafe_allow_html=True)
 
 # --- LIVE DATAFRAME STORAGE (Real-time memory) ---
 # This initializes your dashboard with your existing file data
