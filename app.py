@@ -50,29 +50,31 @@ color_map = {
     "Culex, Anopheles": "#6B21A8"    # Blend Dark Purple
 }
 
-# --- CENTRAL SHARED CLOUD STORAGE ---
-try:
-    db_storage = st.connection("kv", type="dict")
-except Exception:
-    if "db_fallback" not in st.session_state:
-        st.session_state.db_fallback = {}
-    db_storage = st.session_state.db_fallback
+# --- SECURE CENTRAL SHARED PERSISTENT STORAGE ---
+if "mosquito_data" not in st.secrets:
+    # Fallback to local browser cache if cloud database variables aren't defined in settings yet
+    if "db_shared" not in st.session_state:
+        st.session_state.db_shared = ""
+    db_source = st.session_state
+    db_key = "db_shared"
+else:
+    db_source = st.secrets
+    db_key = "mosquito_data"
 
-# Helper function to load global data safely
 def load_global_dataframe():
-    if "mosquito_data" in db_storage and db_storage["mosquito_data"]:
-        return pd.read_json(StringIO(db_storage["mosquito_data"]))
+    if db_key in db_source and db_source[db_key]:
+        return pd.read_json(StringIO(db_source[db_key]))
     else:
         try:
             initial_df = pd.read_excel("MOSQUITO CONTOL - SUMMARY REPORT JUNE 2026.xlsx", sheet_name='Sheet1', skiprows=1)
             initial_df.columns = [c.strip() for c in initial_df.columns]
             initial_df['Latitude'] = initial_df['Latitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
             initial_df['Longitude'] = initial_df['Longitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
-            db_storage["mosquito_data"] = initial_df.to_json()
+            db_source[db_key] = initial_df.to_json()
             return initial_df
         except:
             empty_df = pd.DataFrame(columns=['Date', 'Larvae Name', 'Description', 'Found Area', 'Area', 'Latitude', 'Longitude'])
-            db_storage["mosquito_data"] = empty_df.to_json()
+            db_source[db_key] = empty_df.to_json()
             return empty_df
 
 df = load_global_dataframe()
@@ -80,18 +82,27 @@ df = load_global_dataframe()
 if 'Date' in df.columns and not df.empty:
     df['Date'] = pd.to_datetime(df['Date']).dt.strftime('%Y-%m-%d')
 
-# --- USER ACCESS PROFILE SELECTOR ---
-st.sidebar.header("🔐 Workspace Access Profile")
-user_role = st.sidebar.radio("Select Your Team Role:", ["Viewer (View Only)", "Admin / Editor (Full Access)"])
+# --- SECURE SIDEBAR ACCESS CONTROL ---
+st.sidebar.header("🔐 Workspace Access")
+user_role = st.sidebar.selectbox("Your Role:", ["Viewer (View Only)", "Admin / Editor (Requires Password)"])
+
+is_admin = False
+if user_role == "Admin / Editor (Requires Password)":
+    password = st.sidebar.text_input("Enter Admin Password", type="password")
+    # Change 'psd2026' to whatever secret password you prefer
+    if password == "psd2026":
+        is_admin = True
+        st.sidebar.success("🔑 Admin access granted!")
+    elif password != "":
+        st.sidebar.error("❌ Incorrect password.")
 
 # --- SELF-CLEARING BASE SPREADSHEET MANAGER ---
-st.sidebar.markdown("---")
-st.sidebar.header("📁 Base Spreadsheet Manager")
+if is_admin:
+    st.sidebar.markdown("---")
+    st.sidebar.header("📁 Base Spreadsheet Manager")
+    if "uploader_key" not in st.session_state:
+        st.session_state.uploader_key = 0
 
-if "uploader_key" not in st.session_state:
-    st.session_state.uploader_key = 0
-
-if user_role == "Admin / Editor (Full Access)":
     uploaded_file = st.sidebar.file_uploader(
         "Upload new Excel sheet to overwrite shared database", 
         type=["xlsx"], 
@@ -105,20 +116,17 @@ if user_role == "Admin / Editor (Full Access)":
             uploaded_df['Latitude'] = uploaded_df['Latitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
             uploaded_df['Longitude'] = uploaded_df['Longitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
             
-            db_storage["mosquito_data"] = uploaded_df.to_json()
+            db_source[db_key] = uploaded_df.to_json()
             st.session_state.uploader_key += 1
             st.sidebar.success("Shared database updated successfully!")
             st.rerun()
         except Exception as e:
             st.sidebar.error("Error formatting uploaded file.")
-else:
-    st.sidebar.info("Spreadsheet uploader is locked in view-only mode.")
 
-# --- MAIN HEADER BANNER (With integrated psd_logo-removebg-preview.png) ---
+# --- MAIN HEADER BANNER ---
 col_banner_left, col_banner_right = st.columns([1, 5])
 with col_banner_left:
     try:
-        # Places your logo nicely aligned on the left side of the header layout
         st.image("psd_logo-removebg-preview.png", width=110)
     except:
         pass
@@ -132,10 +140,9 @@ with col_banner_right:
     """, unsafe_allow_html=True)
 
 # --- SIDEBAR RECORD ENTRY FORM ---
-st.sidebar.markdown("---")
-st.sidebar.header("➕ Add Field Inspection Record")
-
-if user_role == "Admin / Editor (Full Access)":
+if is_admin:
+    st.sidebar.markdown("---")
+    st.sidebar.header("➕ Add Field Inspection Record")
     with st.sidebar.form(key="inspection_form", clear_on_submit=True):
         new_date = st.date_input("Inspection Date", datetime.date(2026, 6, 2))
         new_larvae = st.selectbox("Larvae Name Found", ["No Larvae", "Aedes", "Culex", "Anopheles", "Culex, Aedes", "Culex, Anopheles"])
@@ -163,10 +170,8 @@ if user_role == "Admin / Editor (Full Access)":
         }
         
         updated_df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-        db_storage["mosquito_data"] = updated_df.to_json()
+        db_source[db_key] = updated_df.to_json()
         st.rerun()
-else:
-    st.sidebar.info("Form data entry entry panels are locked in view-only mode.")
 
 # --- METRIC RE-AGGREGATION ---
 total_inspections = len(df)
@@ -214,25 +219,25 @@ with right_col:
 
 # --- DATA MANAGEMENT CENTER ---
 st.markdown("---")
-st.markdown("### 🛠️ Data Management Center")
+st.markdown("### 📋 Inspection Data Stream Log")
 
-if user_role == "Admin / Editor (Full Access)":
+if is_admin:
     edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True, key="data_editor_grid")
-
     if not edited_df.equals(df):
-        db_storage["mosquito_data"] = edited_df.to_json()
+        db_source[db_key] = edited_df.to_json()
         st.rerun()
 else:
-    st.info("ℹ️ You are in View-Only Mode. Graphs and tables are interactive, but data modifications are locked.")
+    st.info("ℹ️ View-Only Mode Active. Login as Admin in the sidebar to add records or edit rows.")
     st.dataframe(df, use_container_width=True)
 
-buffer = BytesIO()
-with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-    df.to_excel(writer, sheet_name='Sheet1', index=False)
+if is_admin:
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name='Sheet1', index=False)
 
-st.download_button(
-    label="📥 Download Updated Summary Report (.xlsx)",
-    data=buffer.getvalue(),
-    file_name="MOSQUITO_CONTROL_SUMMARY_REPORT_UPDATED.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    st.download_button(
+        label="📥 Download Updated Summary Report (.xlsx)",
+        data=buffer.getvalue(),
+        file_name="MOSQUITO_CONTROL_SUMMARY_REPORT_UPDATED.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
