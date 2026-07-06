@@ -13,7 +13,7 @@ st.markdown("""
     .header-banner {
         background-color: #374151;
         color: white;
-        padding: 30px;
+        padding: 25px 30px;
         border-radius: 15px;
         margin-bottom: 25px;
         border-bottom: 5px solid #F97316;
@@ -58,10 +58,9 @@ except Exception:
         st.session_state.db_fallback = {}
     db_storage = st.session_state.db_fallback
 
-# Helper function to load data safely using StringIO
+# Helper function to load global data safely
 def load_global_dataframe():
     if "mosquito_data" in db_storage and db_storage["mosquito_data"]:
-        # Wrap string in StringIO to fix the FileNotFoundError shown in image_cf88c8.png
         return pd.read_json(StringIO(db_storage["mosquito_data"]))
     else:
         try:
@@ -78,70 +77,96 @@ def load_global_dataframe():
 
 df = load_global_dataframe()
 
-# Ensure the Date column displays correctly as text format inside our grids
 if 'Date' in df.columns and not df.empty:
     df['Date'] = pd.to_datetime(df['Date']).dt.strftime('%Y-%m-%d')
 
-# --- BASE SPREADSHEET OVERWRITE MANAGER ---
+# --- USER ACCESS PROFILE SELECTOR ---
+st.sidebar.header("🔐 Workspace Access Profile")
+user_role = st.sidebar.radio("Select Your Team Role:", ["Viewer (View Only)", "Admin / Editor (Full Access)"])
+
+# --- SELF-CLEARING BASE SPREADSHEET MANAGER ---
+st.sidebar.markdown("---")
 st.sidebar.header("📁 Base Spreadsheet Manager")
-uploaded_file = st.sidebar.file_uploader("Upload new Excel sheet to overwrite shared data", type=["xlsx"])
 
-if uploaded_file is not None:
+if "uploader_key" not in st.session_state:
+    st.session_state.uploader_key = 0
+
+if user_role == "Admin / Editor (Full Access)":
+    uploaded_file = st.sidebar.file_uploader(
+        "Upload new Excel sheet to overwrite shared database", 
+        type=["xlsx"], 
+        key=f"uploader_{st.session_state.uploader_key}"
+    )
+
+    if uploaded_file is not None:
+        try:
+            uploaded_df = pd.read_excel(uploaded_file, sheet_name='Sheet1', skiprows=1)
+            uploaded_df.columns = [c.strip() for c in uploaded_df.columns]
+            uploaded_df['Latitude'] = uploaded_df['Latitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
+            uploaded_df['Longitude'] = uploaded_df['Longitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
+            
+            db_storage["mosquito_data"] = uploaded_df.to_json()
+            st.session_state.uploader_key += 1
+            st.sidebar.success("Shared database updated successfully!")
+            st.rerun()
+        except Exception as e:
+            st.sidebar.error("Error formatting uploaded file.")
+else:
+    st.sidebar.info("Spreadsheet uploader is locked in view-only mode.")
+
+# --- MAIN HEADER BANNER (With integrated psd_logo-removebg-preview.png) ---
+col_banner_left, col_banner_right = st.columns([1, 5])
+with col_banner_left:
     try:
-        uploaded_df = pd.read_excel(uploaded_file, sheet_name='Sheet1', skiprows=1)
-        uploaded_df.columns = [c.strip() for c in uploaded_df.columns]
-        uploaded_df['Latitude'] = uploaded_df['Latitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
-        uploaded_df['Longitude'] = uploaded_df['Longitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
-        db_storage["mosquito_data"] = uploaded_df.to_json()
-        st.sidebar.success("Shared database updated successfully!")
-        st.rerun()
-    except Exception as e:
-        st.sidebar.error("Error formatting uploaded file.")
+        # Places your logo nicely aligned on the left side of the header layout
+        st.image("psd_logo-removebg-preview.png", width=110)
+    except:
+        pass
 
-# --- MAIN HEADER BANNER ---
-st.markdown("""
-    <div class="header-banner">
-        <div style="display: flex; align-items: center; gap: 20px;">
-            <div>
-                <h1 style='margin:0; font-size: 34px;'>Mosquito Control Data</h1>
-                <p style='margin:0; opacity: 0.85;'>Overall Environmental Operations • Emirate of Ras Al Khaimah</p>
-            </div>
+with col_banner_right:
+    st.markdown("""
+        <div class="header-banner">
+            <h1 style='margin:0; font-size: 34px;'>Mosquito Control Data</h1>
+            <p style='margin:0; opacity: 0.85;'>Overall Environmental Operations • Emirate of Ras Al Khaimah</p>
         </div>
-    </div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
 # --- SIDEBAR RECORD ENTRY FORM ---
 st.sidebar.markdown("---")
 st.sidebar.header("➕ Add Field Inspection Record")
 
-with st.sidebar.form(key="inspection_form", clear_on_submit=True):
-    new_date = st.date_input("Inspection Date", datetime.date(2026, 6, 2))
-    new_larvae = st.selectbox("Larvae Name Found", ["No Larvae", "Aedes", "Culex", "Anopheles", "Culex, Aedes", "Culex, Anopheles"])
-    new_desc = st.selectbox("Action Description", ["Inspected", "Inspected & Treated"])
-    new_found_dropdown = st.selectbox("Breeding Ground / Found Area", ["-", "Buckets", "Water Tank", "Stagnant water", "Tire", "Drum", "Fountain", "Other"])
-    other_text = st.text_input("If 'Other', please specify below:", placeholder="Type location details here...")
-    new_area = st.text_input("Area / Sector Name", placeholder="e.g. Al Araibi")
-    new_lat = st.number_input("Latitude", value=25.7594, format="%.6f")
-    new_lon = st.number_input("Longitude", value=55.9358, format="%.6f")
-    
-    submit_button = st.form_submit_button(label="Submit to Live Dashboard")
+if user_role == "Admin / Editor (Full Access)":
+    with st.sidebar.form(key="inspection_form", clear_on_submit=True):
+        new_date = st.date_input("Inspection Date", datetime.date(2026, 6, 2))
+        new_larvae = st.selectbox("Larvae Name Found", ["No Larvae", "Aedes", "Culex", "Anopheles", "Culex, Aedes", "Culex, Anopheles"])
+        new_desc = st.selectbox("Action Description", ["Inspected", "Inspected & Treated"])
+        new_found_dropdown = st.selectbox("Breeding Ground / Found Area", ["-", "Buckets", "Water Tank", "Stagnant water", "Tire", "Drum", "Fountain", "Other"])
+        
+        other_text = st.text_input("If 'Other', please specify below:", placeholder="Type location details here...")
+        new_area = st.text_input("Area / Sector Name", placeholder="e.g. Al Araibi")
+        new_lat = st.number_input("Latitude", value=25.7594, format="%.6f")
+        new_lon = st.number_input("Longitude", value=55.9358, format="%.6f")
+        
+        submit_button = st.form_submit_button(label="Submit to Live Dashboard")
 
-if submit_button:
-    final_found_area = other_text if new_found_dropdown == "Other" and other_text.strip() != "" else new_found_dropdown
-    
-    new_row = {
-        'Date': pd.to_datetime(new_date).strftime('%Y-%m-%d'),
-        'Larvae Name': new_larvae,
-        'Description': new_desc,
-        'Found Area': final_found_area,
-        'Area': new_area,
-        'Latitude': float(new_lat),
-        'Longitude': float(new_lon)
-    }
-    
-    updated_df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-    db_storage["mosquito_data"] = updated_df.to_json()
-    st.rerun()
+    if submit_button:
+        final_found_area = other_text if new_found_dropdown == "Other" and other_text.strip() != "" else new_found_dropdown
+        
+        new_row = {
+            'Date': pd.to_datetime(new_date).strftime('%Y-%m-%d'),
+            'Larvae Name': new_larvae,
+            'Description': new_desc,
+            'Found Area': final_found_area,
+            'Area': new_area,
+            'Latitude': float(new_lat),
+            'Longitude': float(new_lon)
+        }
+        
+        updated_df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+        db_storage["mosquito_data"] = updated_df.to_json()
+        st.rerun()
+else:
+    st.sidebar.info("Form data entry entry panels are locked in view-only mode.")
 
 # --- METRIC RE-AGGREGATION ---
 total_inspections = len(df)
@@ -191,15 +216,19 @@ with right_col:
 st.markdown("---")
 st.markdown("### 🛠️ Data Management Center")
 
-edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True, key="data_editor_grid")
+if user_role == "Admin / Editor (Full Access)":
+    edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True, key="data_editor_grid")
 
-if not edited_df.equals(df):
-    db_storage["mosquito_data"] = edited_df.to_json()
-    st.rerun()
+    if not edited_df.equals(df):
+        db_storage["mosquito_data"] = edited_df.to_json()
+        st.rerun()
+else:
+    st.info("ℹ️ You are in View-Only Mode. Graphs and tables are interactive, but data modifications are locked.")
+    st.dataframe(df, use_container_width=True)
 
 buffer = BytesIO()
 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-    edited_df.to_excel(writer, sheet_name='Sheet1', index=False)
+    df.to_excel(writer, sheet_name='Sheet1', index=False)
 
 st.download_button(
     label="📥 Download Updated Summary Report (.xlsx)",
