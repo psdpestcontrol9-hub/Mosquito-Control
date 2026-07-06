@@ -71,7 +71,7 @@ st.markdown("""
             <span style='font-size:12px;'>2026</span>
         </div>
     </div>
-""", unsafe_with_html=True)
+""", unsafe_allow_html=True)
 
 # --- DATA ENTRY PANEL (Collapsible Form Sidebar) ---
 st.sidebar.header("➕ Add Field Inspection Record")
