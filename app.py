@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import datetime
-from io import BytesIO
+from io import BytesIO, StringIO
 
 # --- PAGE CONFIGURATION & THEME ---
 st.set_page_config(page_title="Mosquito Control Dashboard", layout="wide")
@@ -51,22 +51,19 @@ color_map = {
 }
 
 # --- CENTRAL SHARED CLOUD STORAGE ---
-# This connects your app to Streamlit's global cloud database
 try:
     db_storage = st.connection("kv", type="dict")
 except Exception:
-    # Fallback to local session state if cloud storage connection isn't configured yet
     if "db_fallback" not in st.session_state:
         st.session_state.db_fallback = {}
     db_storage = st.session_state.db_fallback
 
-# Helper function to load data
+# Helper function to load data safely using StringIO
 def load_global_dataframe():
-    if "mosquito_data" in db_storage:
-        # Load the centrally saved data
-        return pd.read_json(db_storage["mosquito_data"])
+    if "mosquito_data" in db_storage and db_storage["mosquito_data"]:
+        # Wrap string in StringIO to fix the FileNotFoundError shown in image_cf88c8.png
+        return pd.read_json(StringIO(db_storage["mosquito_data"]))
     else:
-        # First-time setup: load original file from GitHub
         try:
             initial_df = pd.read_excel("MOSQUITO CONTOL - SUMMARY REPORT JUNE 2026.xlsx", sheet_name='Sheet1', skiprows=1)
             initial_df.columns = [c.strip() for c in initial_df.columns]
@@ -80,6 +77,10 @@ def load_global_dataframe():
             return empty_df
 
 df = load_global_dataframe()
+
+# Ensure the Date column displays correctly as text format inside our grids
+if 'Date' in df.columns and not df.empty:
+    df['Date'] = pd.to_datetime(df['Date']).dt.strftime('%Y-%m-%d')
 
 # --- BASE SPREADSHEET OVERWRITE MANAGER ---
 st.sidebar.header("📁 Base Spreadsheet Manager")
@@ -138,7 +139,6 @@ if submit_button:
         'Longitude': float(new_lon)
     }
     
-    # Append row directly to the shared cloud database
     updated_df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
     db_storage["mosquito_data"] = updated_df.to_json()
     st.rerun()
@@ -191,7 +191,6 @@ with right_col:
 st.markdown("---")
 st.markdown("### 🛠️ Data Management Center")
 
-# Display editor and handle direct spreadsheet cell changes globally
 edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True, key="data_editor_grid")
 
 if not edited_df.equals(df):
