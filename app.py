@@ -50,21 +50,34 @@ color_map = {
     "Culex, Anopheles": "#6B21A8"    # Blend Dark Purple
 }
 
-# --- GLOBAL LIVE DATABASE CONFIGURATION ---
-# We use Streamlit session_state at the global level to ensure mutability across team views
-if "global_mosquito_db" not in st.session_state:
-    try:
-        initial_df = pd.read_excel("MOSQUITO CONTOL - SUMMARY REPORT JUNE 2026.xlsx", sheet_name='Sheet1', skiprows=1)
-        initial_df.columns = [c.strip() for c in initial_df.columns]
-        initial_df['Latitude'] = initial_df['Latitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
-        initial_df['Longitude'] = initial_df['Longitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
-        st.session_state.global_mosquito_db = initial_df.to_json()
-    except:
-        empty_df = pd.DataFrame(columns=['Date', 'Larvae Name', 'Description', 'Found Area', 'Area', 'Latitude', 'Longitude'])
-        st.session_state.global_mosquito_db = empty_df.to_json()
+# --- GLOBAL TEAM-SHARED DATA STORAGE HUB ---
+# This cache memory resource shares data across all concurrent connected users safely
+@st.cache_resource
+def get_shared_database_connection():
+    # Inner holder class to mimic a real database store
+    class SharedDatabase:
+        def __init__(self):
+            try:
+                initial_df = pd.read_excel("MOSQUITO CONTOL - SUMMARY REPORT JUNE 2026.xlsx", sheet_name='Sheet1', skiprows=1)
+                initial_df.columns = [c.strip() for c in initial_df.columns]
+                initial_df['Latitude'] = initial_df['Latitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
+                initial_df['Longitude'] = initial_df['Longitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
+                self.data_json = initial_df.to_json()
+            except:
+                empty_df = pd.DataFrame(columns=['Date', 'Larvae Name', 'Description', 'Found Area', 'Area', 'Latitude', 'Longitude'])
+                self.data_json = empty_df.to_json()
+                
+        def read(self):
+            return pd.read_json(StringIO(self.data_json))
+            
+        def write(self, updated_df):
+            self.data_json = updated_df.to_json()
 
-# Safely extract the active data frame
-df = pd.read_json(StringIO(st.session_state.global_mosquito_db))
+    return SharedDatabase()
+
+# Establish link to the shared memory data cache
+db_hub = get_shared_database_connection()
+df = db_hub.read()
 
 if 'Date' in df.columns and not df.empty:
     df['Date'] = pd.to_datetime(df['Date']).dt.strftime('%Y-%m-%d')
@@ -102,7 +115,7 @@ if is_admin:
             uploaded_df['Latitude'] = uploaded_df['Latitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
             uploaded_df['Longitude'] = uploaded_df['Longitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
             
-            st.session_state.global_mosquito_db = uploaded_df.to_json()
+            db_hub.write(uploaded_df)
             st.session_state.uploader_key += 1
             st.sidebar.success("Shared database updated successfully!")
             st.rerun()
@@ -156,7 +169,7 @@ if is_admin:
         }
         
         updated_df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-        st.session_state.global_mosquito_db = updated_df.to_json()
+        db_hub.write(updated_df)
         st.rerun()
 
 # --- METRIC RE-AGGREGATION ---
@@ -210,7 +223,7 @@ st.markdown("### 📋 Inspection Data Stream Log")
 if is_admin:
     edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True, key="data_editor_grid")
     if not edited_df.equals(df):
-        st.session_state.global_mosquito_db = edited_df.to_json()
+        db_hub.write(edited_df)
         st.rerun()
 else:
     st.info("ℹ️ View-Only Mode Active. Login as Admin in the sidebar to add records or edit rows.")
