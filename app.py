@@ -6,36 +6,39 @@ import datetime
 # --- PAGE CONFIGURATION & THEME ---
 st.set_page_config(page_title="Mosquito Control Dashboard", layout="wide")
 
-# Custom CSS styling to mimic the beautiful rounded cards and colors of image_c3a3fe.png
+# Custom CSS styling updated to match your Orange, White, and Grey corporate identity
 st.markdown("""
     <style>
-    .main { background-color: #F7F5EB; }
+    /* Light Grey Background for the whole website */
+    .main { background-color: #F3F4F6; } 
+    
+    /* Dark Slate Grey Banner with an Orange accent border */
     .header-banner {
-        background-color: #112D32;
+        background-color: #374151;
         color: white;
         padding: 30px;
         border-radius: 15px;
         margin-bottom: 25px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
+        border-bottom: 5px solid #F97316;
     }
+    
+    /* Pure White Cards with an Orange indicator bar */
     .metric-card {
         background-color: white;
         padding: 20px;
         border-radius: 15px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        border-left: 5px solid #257F73;
+        border-left: 5px solid #F97316;
         margin-bottom: 15px;
     }
     .metric-val {
         font-size: 36px;
         font-weight: 800;
-        color: #112D32;
+        color: #1F2937;
     }
     .metric-lbl {
         font-size: 12px;
-        color: #666;
+        color: #6B7280;
         text-transform: uppercase;
         font-weight: 600;
     }
@@ -45,10 +48,8 @@ st.markdown("""
 # --- LIVE DATAFRAME STORAGE (Real-time memory) ---
 if "db" not in st.session_state:
     try:
-        # Load your historical data from MOSQUITO CONTOL - SUMMARY REPORT JUNE 2026.xlsx
         initial_df = pd.read_excel("MOSQUITO CONTOL - SUMMARY REPORT JUNE 2026.xlsx", sheet_name='Sheet1', skiprows=1)
         initial_df.columns = [c.strip() for c in initial_df.columns]
-        # Clean up text coordinate symbols
         initial_df['Latitude'] = initial_df['Latitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
         initial_df['Longitude'] = initial_df['Longitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
         st.session_state.db = initial_df
@@ -57,21 +58,25 @@ if "db" not in st.session_state:
 
 df = st.session_state.db
 
-# --- MAIN HEADER BANNER ---
+# --- MAIN HEADER BANNER (Branded Orange & Grey, No Month Block) ---
 st.markdown("""
     <div class="header-banner">
-        <div>
-            <h1 style='margin:0; font-size: 32px;'>Monthly Report</h1>
-            <p style='margin:0; opacity: 0.8;'>Mosquito Control & Environmental Operations • Emirate of Ras Al Khaimah</p>
-        </div>
-        <div style='background-color: #257F73; padding: 15px 25px; border-radius: 10px; text-align: center;'>
-            <span style='display:block; font-size:24px; font-weight:bold;'>June</span>
-            <span style='font-size:12px;'>2026</span>
+        <div style="display: flex; align-items: center; gap: 20px;">
+            <div>
+                <h1 style='margin:0; font-size: 34px;'>Mosquito Control Data</h1>
+                <p style='margin:0; opacity: 0.85;'>Overall Environmental Operations • Emirate of Ras Al Khaimah</p>
+            </div>
         </div>
     </div>
 """, unsafe_allow_html=True)
 
 # --- DATA ENTRY PANEL ---
+# Automatically display your logo file at the top of the sidebar panel if it exists
+try:
+    st.sidebar.image("logo.png", use_container_width=True)
+except:
+    pass
+
 st.sidebar.header("➕ Add Field Inspection Record")
 with st.sidebar.form(key="inspection_form", clear_on_submit=True):
     new_date = st.date_input("Inspection Date", datetime.date(2026, 6, 2))
@@ -105,11 +110,11 @@ treated_sites = len(df[df['Description'].str.contains('Treated', case=False, na=
 # --- KPI METRIC CARDS ---
 col1, col2, col3 = st.columns(3)
 with col1:
-    st.markdown(f'<div class="metric-card"><div class="metric-lbl">Total Field Inspections</div><div class="metric-val">{total_inspections}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card" style="border-left-color: #9CA3AF;"><div class="metric-lbl">Total Field Inspections</div><div class="metric-val">{total_inspections}</div></div>', unsafe_allow_html=True)
 with col2:
-    st.markdown(f'<div class="metric-card" style="border-left-color: #E05638;"><div class="metric-lbl">Positive Larval Detections</div><div class="metric-val">{positive_cases}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card" style="border-left-color: #F97316;"><div class="metric-lbl">Positive Larval Detections</div><div class="metric-val">{positive_cases}</div></div>', unsafe_allow_html=True)
 with col3:
-    st.markdown(f'<div class="metric-card" style="border-left-color: #38A3A5;"><div class="metric-lbl">Active Treatments Completed</div><div class="metric-val">{treated_sites}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card" style="border-left-color: #4B5563;"><div class="metric-lbl">Active Treatments Completed</div><div class="metric-val">{treated_sites}</div></div>', unsafe_allow_html=True)
 
 st.markdown("---")
 
@@ -119,7 +124,9 @@ left_col, right_col = st.columns([1, 1])
 with left_col:
     st.subheader("📊 Larvae Species Split")
     if not df.empty:
-        fig_pie = px.pie(df, names='Larvae Name', color_discrete_sequence=px.colors.sequential.Teal_r, hole=0.4)
+        # Pie chart updated to match an Orange and Grey sequence
+        orange_grey_palette = ['#9CA3AF', '#F97316', '#4B5563', '#D1D5DB']
+        fig_pie = px.pie(df, names='Larvae Name', color_discrete_sequence=orange_grey_palette, hole=0.4)
         fig_pie.update_layout(margin=dict(t=20, b=20, l=20, r=20), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig_pie, use_container_width=True)
     else:
@@ -131,6 +138,7 @@ with right_col:
         fig_map = px.scatter_mapbox(
             df, lat="Latitude", lon="Longitude", 
             color="Larvae Name", size=[10]*len(df),
+            color_discrete_sequence=['#9CA3AF', '#F97316', '#4B5563', '#374151'],
             hover_name="Area", hover_data=["Description", "Found Area"],
             zoom=10, height=350
         )
