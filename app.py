@@ -2,17 +2,14 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import datetime
+from io import BytesIO
 
 # --- PAGE CONFIGURATION & THEME ---
 st.set_page_config(page_title="Mosquito Control Dashboard", layout="wide")
 
-# Custom CSS styling updated to match your Orange, White, and Grey corporate identity
 st.markdown("""
     <style>
-    /* Light Grey Background for the whole website */
     .main { background-color: #F3F4F6; } 
-    
-    /* Dark Slate Grey Banner with an Orange accent border */
     .header-banner {
         background-color: #374151;
         color: white;
@@ -21,8 +18,6 @@ st.markdown("""
         margin-bottom: 25px;
         border-bottom: 5px solid #F97316;
     }
-    
-    /* Pure White Cards with an Orange indicator bar */
     .metric-card {
         background-color: white;
         padding: 20px;
@@ -45,7 +40,34 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- LIVE DATAFRAME STORAGE (Real-time memory) ---
+# --- BRANDED COLOR DICTIONARY MAP ---
+# Exact match request: No Larvae (Green), Culex (Yellow), Anopheles (Purple), Aedes (Red)
+color_map = {
+    "No Larvae": "#22C55E",          # Clean Green
+    "Aedes": "#EF4444",              # Warning Red
+    "Culex": "#EAB308",              # Bright Yellow
+    "Anopheles": "#A855F7",          # Deep Purple
+    "Culex, Aedes": "#F97316",       # Blend Orange
+    "Culex, Anopheles": "#6B21A8"    # Blend Dark Purple
+}
+
+# --- SPREADSHEET MANAGER (Live File Upload & Memory) ---
+st.sidebar.header("📁 Base Spreadsheet Manager")
+uploaded_file = st.sidebar.file_uploader("Upload or reset base Excel sheet", type=["xlsx"])
+
+# Set initial data if a file is dropped into the portal sidebar
+if uploaded_file is not None:
+    try:
+        uploaded_df = pd.read_excel(uploaded_file, sheet_name='Sheet1', skiprows=1)
+        uploaded_df.columns = [c.strip() for c in uploaded_df.columns]
+        uploaded_df['Latitude'] = uploaded_df['Latitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
+        uploaded_df['Longitude'] = uploaded_df['Longitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
+        st.session_state.db = uploaded_df
+        st.sidebar.success("New Excel data loaded successfully!")
+    except Exception as e:
+        st.sidebar.error("Error reading file layout. Verify sheet format.")
+
+# Global state fallback pipeline
 if "db" not in st.session_state:
     try:
         initial_df = pd.read_excel("MOSQUITO CONTOL - SUMMARY REPORT JUNE 2026.xlsx", sheet_name='Sheet1', skiprows=1)
@@ -58,7 +80,7 @@ if "db" not in st.session_state:
 
 df = st.session_state.db
 
-# --- MAIN HEADER BANNER (Branded Orange & Grey, No Month Block) ---
+# --- MAIN HEADER BANNER ---
 st.markdown("""
     <div class="header-banner">
         <div style="display: flex; align-items: center; gap: 20px;">
@@ -70,19 +92,23 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# --- DATA ENTRY PANEL ---
-# Automatically display your logo file at the top of the sidebar panel if it exists
-try:
-    st.sidebar.image("logo.png", use_container_width=True)
-except:
-    pass
-
+# --- SIDEBAR RECORD ENTRY FORM ---
+st.sidebar.markdown("---")
 st.sidebar.header("➕ Add Field Inspection Record")
+
 with st.sidebar.form(key="inspection_form", clear_on_submit=True):
     new_date = st.date_input("Inspection Date", datetime.date(2026, 6, 2))
-    new_larvae = st.selectbox("Larvae Name Found", ["No Larvae", "Aedes", "Culex, Aedes", "Culex, Anopheles"])
+    
+    # Extended list values requested
+    new_larvae = st.selectbox("Larvae Name Found", ["No Larvae", "Aedes", "Culex", "Anopheles", "Culex, Aedes", "Culex, Anopheles"])
     new_desc = st.selectbox("Action Description", ["Inspected", "Inspected & Treated"])
-    new_found = st.selectbox("Breeding Ground / Found Area", ["-", "Buckets", "Water Tank", "Stagnant water", "Tire", "Drum", "Fountain"])
+    
+    # Found options with "Other" trigger flag
+    new_found_dropdown = st.selectbox("Breeding Ground / Found Area", ["-", "Buckets", "Water Tank", "Stagnant water", "Tire", "Drum", "Fountain", "Other"])
+    
+    # Smart conditional display happens inside form natively
+    other_text = st.text_input("If 'Other', please specify below:", placeholder="Type location details here...")
+    
     new_area = st.text_input("Area / Sector Name", placeholder="e.g. Al Araibi")
     new_lat = st.number_input("Latitude", value=25.7594, format="%.6f")
     new_lon = st.number_input("Longitude", value=55.9358, format="%.6f")
@@ -90,11 +116,14 @@ with st.sidebar.form(key="inspection_form", clear_on_submit=True):
     submit_button = st.form_submit_button(label="Submit to Live Dashboard")
 
 if submit_button:
+    # Set final field based on whether custom value was keyed in
+    final_found_area = other_text if new_found_dropdown == "Other" and other_text.strip() != "" else new_found_dropdown
+    
     new_row = {
         'Date': pd.to_datetime(new_date),
         'Larvae Name': new_larvae,
         'Description': new_desc,
-        'Found Area': new_found,
+        'Found Area': final_found_area,
         'Area': new_area,
         'Latitude': float(new_lat),
         'Longitude': float(new_lon)
@@ -124,9 +153,7 @@ left_col, right_col = st.columns([1, 1])
 with left_col:
     st.subheader("📊 Larvae Species Split")
     if not df.empty:
-        # Pie chart updated to match an Orange and Grey sequence
-        orange_grey_palette = ['#9CA3AF', '#F97316', '#4B5563', '#D1D5DB']
-        fig_pie = px.pie(df, names='Larvae Name', color_discrete_sequence=orange_grey_palette, hole=0.4)
+        fig_pie = px.pie(df, names='Larvae Name', color='Larvae Name', color_discrete_map=color_map, hole=0.4)
         fig_pie.update_layout(margin=dict(t=20, b=20, l=20, r=20), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig_pie, use_container_width=True)
     else:
@@ -138,7 +165,7 @@ with right_col:
         fig_map = px.scatter_mapbox(
             df, lat="Latitude", lon="Longitude", 
             color="Larvae Name", size=[10]*len(df),
-            color_discrete_sequence=['#9CA3AF', '#F97316', '#4B5563', '#374151'],
+            color_discrete_map=color_map,
             hover_name="Area", hover_data=["Description", "Found Area"],
             zoom=10, height=350
         )
@@ -149,5 +176,22 @@ with right_col:
         st.write("No geographic coordinates logged yet.")
 
 # --- RAW ACTIVITY LOG SHEET ---
-st.markdown("### 📋 Live Operational Inspection Stream Log")
-st.dataframe(df.sort_values(by='Date', ascending=False), use_container_width=True)
+st.markdown("---")
+st.markdown("### 🛠️ Data Management Center")
+
+edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True, key="data_editor_grid")
+
+if not edited_df.equals(df):
+    st.session_state.db = edited_df
+    st.rerun()
+
+buffer = BytesIO()
+with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+    edited_df.to_excel(writer, sheet_name='Sheet1', index=False)
+
+st.download_button(
+    label="📥 Download Updated Summary Report (.xlsx)",
+    data=buffer.getvalue(),
+    file_name="MOSQUITO_CONTROL_SUMMARY_REPORT_UPDATED.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
