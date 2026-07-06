@@ -41,7 +41,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- BRANDED COLOR DICTIONARY MAP ---
-# Exact match request: No Larvae (Green), Culex (Yellow), Anopheles (Purple), Aedes (Red)
 color_map = {
     "No Larvae": "#22C55E",          # Clean Green
     "Aedes": "#EF4444",              # Warning Red
@@ -51,34 +50,52 @@ color_map = {
     "Culex, Anopheles": "#6B21A8"    # Blend Dark Purple
 }
 
-# --- SPREADSHEET MANAGER (Live File Upload & Memory) ---
-st.sidebar.header("📁 Base Spreadsheet Manager")
-uploaded_file = st.sidebar.file_uploader("Upload or reset base Excel sheet", type=["xlsx"])
+# --- CENTRAL SHARED CLOUD STORAGE ---
+# This connects your app to Streamlit's global cloud database
+try:
+    db_storage = st.connection("kv", type="dict")
+except Exception:
+    # Fallback to local session state if cloud storage connection isn't configured yet
+    if "db_fallback" not in st.session_state:
+        st.session_state.db_fallback = {}
+    db_storage = st.session_state.db_fallback
 
-# Set initial data if a file is dropped into the portal sidebar
+# Helper function to load data
+def load_global_dataframe():
+    if "mosquito_data" in db_storage:
+        # Load the centrally saved data
+        return pd.read_json(db_storage["mosquito_data"])
+    else:
+        # First-time setup: load original file from GitHub
+        try:
+            initial_df = pd.read_excel("MOSQUITO CONTOL - SUMMARY REPORT JUNE 2026.xlsx", sheet_name='Sheet1', skiprows=1)
+            initial_df.columns = [c.strip() for c in initial_df.columns]
+            initial_df['Latitude'] = initial_df['Latitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
+            initial_df['Longitude'] = initial_df['Longitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
+            db_storage["mosquito_data"] = initial_df.to_json()
+            return initial_df
+        except:
+            empty_df = pd.DataFrame(columns=['Date', 'Larvae Name', 'Description', 'Found Area', 'Area', 'Latitude', 'Longitude'])
+            db_storage["mosquito_data"] = empty_df.to_json()
+            return empty_df
+
+df = load_global_dataframe()
+
+# --- BASE SPREADSHEET OVERWRITE MANAGER ---
+st.sidebar.header("📁 Base Spreadsheet Manager")
+uploaded_file = st.sidebar.file_uploader("Upload new Excel sheet to overwrite shared data", type=["xlsx"])
+
 if uploaded_file is not None:
     try:
         uploaded_df = pd.read_excel(uploaded_file, sheet_name='Sheet1', skiprows=1)
         uploaded_df.columns = [c.strip() for c in uploaded_df.columns]
         uploaded_df['Latitude'] = uploaded_df['Latitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
         uploaded_df['Longitude'] = uploaded_df['Longitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
-        st.session_state.db = uploaded_df
-        st.sidebar.success("New Excel data loaded successfully!")
+        db_storage["mosquito_data"] = uploaded_df.to_json()
+        st.sidebar.success("Shared database updated successfully!")
+        st.rerun()
     except Exception as e:
-        st.sidebar.error("Error reading file layout. Verify sheet format.")
-
-# Global state fallback pipeline
-if "db" not in st.session_state:
-    try:
-        initial_df = pd.read_excel("MOSQUITO CONTOL - SUMMARY REPORT JUNE 2026.xlsx", sheet_name='Sheet1', skiprows=1)
-        initial_df.columns = [c.strip() for c in initial_df.columns]
-        initial_df['Latitude'] = initial_df['Latitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
-        initial_df['Longitude'] = initial_df['Longitude'].astype(str).str.replace(r'[^\d.]', '', regex=True).astype(float)
-        st.session_state.db = initial_df
-    except:
-        st.session_state.db = pd.DataFrame(columns=['Date', 'Larvae Name', 'Description', 'Found Area', 'Area', 'Latitude', 'Longitude'])
-
-df = st.session_state.db
+        st.sidebar.error("Error formatting uploaded file.")
 
 # --- MAIN HEADER BANNER ---
 st.markdown("""
@@ -98,17 +115,10 @@ st.sidebar.header("➕ Add Field Inspection Record")
 
 with st.sidebar.form(key="inspection_form", clear_on_submit=True):
     new_date = st.date_input("Inspection Date", datetime.date(2026, 6, 2))
-    
-    # Extended list values requested
     new_larvae = st.selectbox("Larvae Name Found", ["No Larvae", "Aedes", "Culex", "Anopheles", "Culex, Aedes", "Culex, Anopheles"])
     new_desc = st.selectbox("Action Description", ["Inspected", "Inspected & Treated"])
-    
-    # Found options with "Other" trigger flag
     new_found_dropdown = st.selectbox("Breeding Ground / Found Area", ["-", "Buckets", "Water Tank", "Stagnant water", "Tire", "Drum", "Fountain", "Other"])
-    
-    # Smart conditional display happens inside form natively
     other_text = st.text_input("If 'Other', please specify below:", placeholder="Type location details here...")
-    
     new_area = st.text_input("Area / Sector Name", placeholder="e.g. Al Araibi")
     new_lat = st.number_input("Latitude", value=25.7594, format="%.6f")
     new_lon = st.number_input("Longitude", value=55.9358, format="%.6f")
@@ -116,11 +126,10 @@ with st.sidebar.form(key="inspection_form", clear_on_submit=True):
     submit_button = st.form_submit_button(label="Submit to Live Dashboard")
 
 if submit_button:
-    # Set final field based on whether custom value was keyed in
     final_found_area = other_text if new_found_dropdown == "Other" and other_text.strip() != "" else new_found_dropdown
     
     new_row = {
-        'Date': pd.to_datetime(new_date),
+        'Date': pd.to_datetime(new_date).strftime('%Y-%m-%d'),
         'Larvae Name': new_larvae,
         'Description': new_desc,
         'Found Area': final_found_area,
@@ -128,13 +137,16 @@ if submit_button:
         'Latitude': float(new_lat),
         'Longitude': float(new_lon)
     }
-    st.session_state.db = pd.concat([st.session_state.db, pd.DataFrame([new_row])], ignore_index=True)
+    
+    # Append row directly to the shared cloud database
+    updated_df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+    db_storage["mosquito_data"] = updated_df.to_json()
     st.rerun()
 
 # --- METRIC RE-AGGREGATION ---
 total_inspections = len(df)
 positive_cases = len(df[df['Larvae Name'] != 'No Larvae'])
-treated_sites = len(df[df['Description'].str.contains('Treated', case=False, na=False)])
+treated_sites = len(df[df['Description'].astype(str).str.contains('Treated', case=False, na=False)])
 
 # --- KPI METRIC CARDS ---
 col1, col2, col3 = st.columns(3)
@@ -175,14 +187,15 @@ with right_col:
     else:
         st.write("No geographic coordinates logged yet.")
 
-# --- RAW ACTIVITY LOG SHEET ---
+# --- DATA MANAGEMENT CENTER ---
 st.markdown("---")
 st.markdown("### 🛠️ Data Management Center")
 
+# Display editor and handle direct spreadsheet cell changes globally
 edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True, key="data_editor_grid")
 
 if not edited_df.equals(df):
-    st.session_state.db = edited_df
+    db_storage["mosquito_data"] = edited_df.to_json()
     st.rerun()
 
 buffer = BytesIO()
