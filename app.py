@@ -119,7 +119,7 @@ if is_admin:
         except Exception as e:
             st.sidebar.error("Error formatting uploaded file.")
 
-# --- MAIN HEADER BANNER (With updated timeline range) ---
+# --- MAIN HEADER BANNER ---
 col_banner_left, col_banner_right = st.columns([1, 5])
 with col_banner_left:
     try:
@@ -185,14 +185,13 @@ with col3:
 
 st.markdown("---")
 
-# --- VISUAL CHARTS & MAPS (With updated pie chart information tags) ---
+# --- VISUAL CHARTS & MAPS: ROW 1 ---
 left_col, right_col = st.columns([1, 1])
 
 with left_col:
     st.subheader("📊 Larvae Species Split")
     if not df.empty:
         fig_pie = px.pie(df, names='Larvae Name', color='Larvae Name', color_discrete_map=color_map, hole=0.4)
-        # Force the chart to showcase Label name + Raw Count Value + Percentage Slice all at once
         fig_pie.update_traces(textinfo='label+value+percent', textposition='outside')
         fig_pie.update_layout(margin=dict(t=30, b=30, l=20, r=20), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', showlegend=False)
         st.plotly_chart(fig_pie, use_container_width=True)
@@ -214,6 +213,33 @@ with right_col:
         st.plotly_chart(fig_map, use_container_width=True)
     else:
         st.write("No geographic coordinates logged yet.")
+
+st.markdown("---")
+
+# --- NEW ANALYTICS: ROW 2 (Found Area & Area Distributions) ---
+lower_left, lower_right = st.columns([1, 1])
+
+with lower_left:
+    st.subheader("🏺 Breeding Grounds Breakdown (Found Area)")
+    if not df.empty and 'Found Area' in df.columns:
+        # Generate donut chart for Breeding Ground categories with count + percentage labels
+        fig_found = px.pie(df, names='Found Area', hole=0.4, color_discrete_sequence=px.colors.qualitative.Safe)
+        fig_found.update_traces(textinfo='label+value+percent', textposition='outside')
+        fig_found.update_layout(margin=dict(t=30, b=30, l=20, r=20), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', showlegend=False)
+        st.plotly_chart(fig_found, use_container_width=True)
+    else:
+        st.write("No 'Found Area' data logged yet.")
+
+with lower_right:
+    st.subheader("🏙️ Regional Sector Breakdown (Area)")
+    if not df.empty and 'Area' in df.columns:
+        # Generate donut chart for Sector Locations with count + percentage labels
+        fig_area = px.pie(df, names='Area', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
+        fig_area.update_traces(textinfo='label+value+percent', textposition='outside')
+        fig_area.update_layout(margin=dict(t=30, b=30, l=20, r=20), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', showlegend=False)
+        st.plotly_chart(fig_area, use_container_width=True)
+    else:
+        st.write("No geographic 'Area' data logged yet.")
 
 # --- DATA MANAGEMENT CENTER ---
 st.markdown("---")
