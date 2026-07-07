@@ -51,10 +51,8 @@ color_map = {
 }
 
 # --- GLOBAL TEAM-SHARED DATA STORAGE HUB ---
-# This cache memory resource shares data across all concurrent connected users safely
 @st.cache_resource
 def get_shared_database_connection():
-    # Inner holder class to mimic a real database store
     class SharedDatabase:
         def __init__(self):
             try:
@@ -75,7 +73,6 @@ def get_shared_database_connection():
 
     return SharedDatabase()
 
-# Establish link to the shared memory data cache
 db_hub = get_shared_database_connection()
 df = db_hub.read()
 
@@ -122,7 +119,7 @@ if is_admin:
         except Exception as e:
             st.sidebar.error("Error formatting uploaded file.")
 
-# --- MAIN HEADER BANNER ---
+# --- MAIN HEADER BANNER (With updated timeline range) ---
 col_banner_left, col_banner_right = st.columns([1, 5])
 with col_banner_left:
     try:
@@ -133,7 +130,7 @@ with col_banner_left:
 with col_banner_right:
     st.markdown("""
         <div class="header-banner">
-            <h1 style='margin:0; font-size: 34px;'>Mosquito Control Data</h1>
+            <h1 style='margin:0; font-size: 34px;'>Mosquito Control Data <span style="font-size: 20px; font-weight: 400; opacity: 0.85; padding-left: 10px;">(MAY TO TILL DATE)</span></h1>
             <p style='margin:0; opacity: 0.85;'>Overall Environmental Operations • Emirate of Ras Al Khaimah</p>
         </div>
     """, unsafe_allow_html=True)
@@ -188,14 +185,16 @@ with col3:
 
 st.markdown("---")
 
-# --- VISUAL CHARTS & MAPS ---
+# --- VISUAL CHARTS & MAPS (With updated pie chart information tags) ---
 left_col, right_col = st.columns([1, 1])
 
 with left_col:
     st.subheader("📊 Larvae Species Split")
     if not df.empty:
         fig_pie = px.pie(df, names='Larvae Name', color='Larvae Name', color_discrete_map=color_map, hole=0.4)
-        fig_pie.update_layout(margin=dict(t=20, b=20, l=20, r=20), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+        # Force the chart to showcase Label name + Raw Count Value + Percentage Slice all at once
+        fig_pie.update_traces(textinfo='label+value+percent', textposition='outside')
+        fig_pie.update_layout(margin=dict(t=30, b=30, l=20, r=20), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', showlegend=False)
         st.plotly_chart(fig_pie, use_container_width=True)
     else:
         st.write("No data available yet.")
@@ -208,7 +207,7 @@ with right_col:
             color="Larvae Name", size=[10]*len(df),
             color_discrete_map=color_map,
             hover_name="Area", hover_data=["Description", "Found Area"],
-            zoom=10, height=350
+            zoom=10, height=380
         )
         fig_map.update_layout(mapbox_style="carto-positron")
         fig_map.update_layout(margin=dict(t=0, b=0, l=0, r=0))
